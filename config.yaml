@@ -1,0 +1,8 @@
+destinations:
+  "192.168.4.4:9000":
+    tenants:
+      "staging":
+        mode: "allowlist" # denylist
+        groups:
+          - name: "group1"
+          - name: "group2"
