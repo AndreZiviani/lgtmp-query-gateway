@@ -1,0 +1,1 @@
+# lgtmp-query-gateway
