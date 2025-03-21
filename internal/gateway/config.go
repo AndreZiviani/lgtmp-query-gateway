@@ -13,7 +13,8 @@ type config struct {
 
 // Destination represents a destination with a map of tenants
 type Destination struct {
-	Tenants map[string]Tenant `yaml:"tenants"`
+	Tenants  map[string]Tenant `yaml:"tenants"`
+	Upstream string            `yaml:"upstream"`
 }
 
 // Tenant represents a tenant with a mode and a list of groups

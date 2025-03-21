@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"slices"
+	"strconv"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
 	"github.com/labstack/echo/v4"
@@ -17,9 +18,10 @@ const (
 )
 
 type Handler struct {
-	provider *entra.EntraProvider
-	config   *config
-	mode     string
+	provider  *entra.EntraProvider
+	config    *config
+	mode      string
+	upstreams map[string]middleware.ProxyTarget
 }
 
 type Claims struct {
@@ -35,6 +37,7 @@ type Claims struct {
 
 func Serve(ctx context.Context, c *cli.Command) error {
 	e := echo.New()
+	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
 
@@ -59,27 +62,42 @@ func Serve(ctx context.Context, c *cli.Command) error {
 		mode:     mode,
 	}
 
-	e.Use(handler.validate)
+	e.Use(handler.checkPermissions)
 
 	if mode == "proxy" {
-		upstream, err := url.Parse(c.String("upstream"))
-		if err != nil {
-			log.Panic(err)
+		targets := map[string]*middleware.ProxyTarget{}
+		for host, dest := range config.Destinations {
+			if dest.Upstream == "" {
+				log.Panic("missing upstream for destination " + host)
+			}
+
+			upstream, err := url.Parse(dest.Upstream)
+			if err != nil {
+				log.Panic(err)
+			}
+
+			targets[host] = &middleware.ProxyTarget{
+				URL: upstream,
+			}
 		}
 
-		targets := []*middleware.ProxyTarget{
-			{
-				URL: upstream,
-			},
+		balancer := &CustomBalancer{
+			targets: targets,
 		}
 
 		e.Use(
-			middleware.Proxy(middleware.NewRoundRobinBalancer(targets)),
+			balancer.CheckTarget,
+			middleware.ProxyWithConfig(
+				middleware.ProxyConfig{
+					Balancer: balancer,
+				},
+			),
 		)
-
 	}
 
-	e.Logger.Fatal(e.Start(":9000"))
+	e.Logger.Fatal(
+		e.Start(":"+strconv.Itoa(int(c.Uint("port")))),
+	)
 
 	return nil
 }
@@ -98,9 +116,8 @@ func (h *Handler) validateToken(ctx context.Context, token string) (*Claims, err
 	return claims, nil
 }
 
-func (h *Handler) validate(next echo.HandlerFunc) echo.HandlerFunc {
+func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// header x-id-token tem os grupos
 		token := c.Request().Header.Get("x-id-token")
 		if token == "" {
 			return c.String(401, "Unauthorized")

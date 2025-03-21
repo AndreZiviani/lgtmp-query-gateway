@@ -25,12 +25,6 @@ func Command() *cli.Command {
 				Value:   "entra",
 			},
 			&cli.StringFlag{
-				Name:    "upstream",
-				Usage:   "Upstream URL, required if mode is proxy",
-				Aliases: []string{"u"},
-				Sources: cli.EnvVars("UPSTREAM"),
-			},
-			&cli.StringFlag{
 				Name:     "tenant-id",
 				Usage:    "Azure Tenant ID",
 				Aliases:  []string{"t"},
@@ -50,6 +44,12 @@ func Command() *cli.Command {
 				Aliases: []string{"f"},
 				Sources: cli.EnvVars("CONFIG"),
 				Value:   "config.yaml",
+			},
+			&cli.UintFlag{
+				Name:    "port",
+				Usage:   "Port to listen on",
+				Sources: cli.EnvVars("PORT"),
+				Value:   9000,
 			},
 		},
 	}
