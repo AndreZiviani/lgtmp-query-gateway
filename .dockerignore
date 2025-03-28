@@ -1,0 +1,9 @@
+.vscode
+.dockerignore
+.env
+.gitignore
+.git
+.goreleaser.yaml
+dist
+config.yaml
+main
