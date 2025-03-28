@@ -1,0 +1,142 @@
+/*
+package loki
+
+import (
+	"fmt"
+	"log"
+
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlanalyzer"
+	"github.com/prometheus/prometheus/model/labels"
+)
+
+type Label struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func ParseQuery(query string) (syntax.Expr, error) {
+
+	// Parse the query using Loki's syntax parser
+	parsed, err := syntax.ParseExpr(query)
+	if err != nil {
+		log.Println(err)
+	}
+
+	var parsedselector syntax.LogSelectorExpr
+	switch parsed.(type) {
+	case *syntax.RangeAggregationExpr:
+		// this is a metrics query
+		tmp := parsed.(*syntax.RangeAggregationExpr)
+		parsedselector, _ = tmp.Selector()
+	case syntax.LogSelectorExpr:
+		// this is a log query
+		parsedselector = parsed.(syntax.LogSelectorExpr)
+	}
+
+	streamSelector, stages, err := extractExpressionParts(parsedselector)
+	if err != nil {
+		log.Println(err)
+	}
+
+	patch(parsedselector)
+
+	var pipeline logqllog.Pipeline
+	if parsedselector != nil {
+		pipeline, err = parsedselector.Pipeline()
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	parsedmatchers, err := syntax.ParseMatchers(streamSelector, false)
+	if err != nil {
+		log.Println(err)
+	}
+
+	log.Println(parsed.String())
+
+	_ = parsedselector
+	// _ = parsedlabels
+	_ = pipeline
+	_ = stages
+	_ = streamSelector
+	_ = parsedmatchers
+	return parsed, nil
+}
+
+func extractExpressionParts(expr syntax.LogSelectorExpr) (string, []string, error) {
+	switch expr := expr.(type) {
+	case *syntax.PipelineExpr:
+		stages := make([]string, 0, len(expr.MultiStages)+1)
+		streamSelector := expr.Left.String()
+		for _, stage := range expr.MultiStages {
+			stages = append(stages, stage.String())
+		}
+		return streamSelector, stages, nil
+	case *syntax.MatchersExpr:
+		return expr.String(), []string{}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported type of expression")
+	}
+
+}
+
+func mapAllToLineResult(originLine string, analysisRecords []logqlanalyzer.StageAnalysisRecord) logqlanalyzer.LineResult {
+	stageRecords := make([]logqlanalyzer.StageRecord, 0, len(analysisRecords))
+	for _, record := range analysisRecords {
+		if !record.Processed {
+			break
+		}
+		stageRecords = append(stageRecords, logqlanalyzer.StageRecord{
+			LineBefore:   record.LineBefore,
+			LabelsBefore: mapAllToLabelsResponse(record.LabelsBefore),
+			LineAfter:    record.LineAfter,
+			LabelsAfter:  mapAllToLabelsResponse(record.LabelsAfter),
+			FilteredOut:  record.FilteredOut,
+		})
+	}
+	return logqlanalyzer.LineResult{originLine, stageRecords}
+}
+
+func mapAllToLabelsResponse(labels labels.Labels) []logqlanalyzer.Label {
+	result := make([]logqlanalyzer.Label, 0, len(labels))
+	for _, label := range labels {
+		result = append(result, logqlanalyzer.Label{Name: label.Name, Value: label.Value})
+	}
+	return result
+}
+
+func patch(p syntax.LogSelectorExpr) {
+	//TODO: labels.NewMatcher()
+	extra := []*labels.Matcher{
+		{
+			Name:  "testkey",
+			Value: "test",
+			Type:  labels.MatchEqual,
+		},
+	}
+	log.Println(p.String())
+	y, ok := p.(*syntax.PipelineExpr)
+	if !ok {
+		log.Println("not ok")
+		return
+	}
+	found := false
+	for _, m := range y.Left.Mts {
+		if m.Name == "testkey" {
+			// user already set this label, we must rewrite it instead of adding it
+			m.Value = "test"
+			m.Type = labels.MatchEqual
+			found = true
+			break
+		}
+	}
+	if !found {
+		y.Left.AppendMatchers(extra)
+	}
+	log.Println(y.String())
+	log.Println(p.String())
+}
+*/

@@ -1,9 +1,13 @@
 destinations:
-  "192.168.4.4:9000":
+  "localhost:9000":
+    type: "loki" # loki|mimir|prometheus|tempo|pyroscope
     upstream: "http://localhost:3000"
+    allowUndefined: true # allow access to undefined tenants
     tenants:
-      "staging":
+      staging:
         mode: "allowlist" # denylist
         groups:
           - name: "group1"
+            enforcedLabels:
+              - 'sensitive!="true"' # only allow access if sensitive label is not true
           - name: "group2"

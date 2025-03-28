@@ -1,12 +1,37 @@
 package gateway
 
 import (
+	"log"
+	"net/url"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
 type CustomBalancer struct {
 	targets map[string]*middleware.ProxyTarget
+}
+
+func NewCustomBalancer(destinations map[string]Destination) *CustomBalancer {
+	targets := map[string]*middleware.ProxyTarget{}
+	for host, dest := range destinations {
+		if dest.Upstream == "" {
+			log.Panic("missing upstream for destination " + host)
+		}
+
+		upstream, err := url.Parse(dest.Upstream)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		targets[host] = &middleware.ProxyTarget{
+			URL: upstream,
+		}
+	}
+
+	return &CustomBalancer{
+		targets: targets,
+	}
 }
 
 // AddTarget implements the ProxyBalancer interface (required by Echo)
