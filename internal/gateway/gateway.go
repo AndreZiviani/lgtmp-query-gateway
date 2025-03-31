@@ -44,18 +44,22 @@ func Serve(ctx context.Context, c *cli.Command) error {
 		log.Panic(err)
 	}
 
-	p, err := entra.New(&entra.AzureSettings{
-		TenantID: c.String("tenant-id"),
-		ClientID: c.String("client-id"),
-	})
-	if err != nil {
-		// log.Panic(err) // TODO
+	tokenValidation := !c.Bool("disable-token-validation")
+	var provider *entra.EntraProvider
+	if tokenValidation {
+		provider, err = entra.New(&entra.AzureSettings{
+			TenantID: c.String("tenant-id"),
+			ClientID: c.String("client-id"),
+		})
+		if err != nil {
+			log.Panic(err)
+		}
 	}
 
 	handler := &Handler{
-		provider:        p,
+		provider:        provider,
 		config:          config,
-		tokenValidation: !c.Bool("disable-token-validation"),
+		tokenValidation: tokenValidation,
 	}
 
 	balancer := NewCustomBalancer(config.Destinations)
