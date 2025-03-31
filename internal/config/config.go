@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"gopkg.in/yaml.v3"
@@ -32,21 +33,21 @@ type Config struct {
 
 // Destination represents a destination with a map of tenants
 type Destination struct {
-	Type           StackType         `yaml:"type"`
-	Upstream       string            `yaml:"upstream"`
+	Type           StackType         `yaml:"type" validate:"required"`
+	Upstream       string            `yaml:"upstream" validate:"required"`
 	AllowUndefined bool              `yaml:"allowUndefined"`
 	Tenants        map[string]Tenant `yaml:"tenants"`
 }
 
 // Tenant represents a tenant with a mode and a list of groups
 type Tenant struct {
-	Mode   Mode    `yaml:"mode"`
+	Mode   Mode    `yaml:"mode" validate:"required,oneof=allowlist denylist"`
 	Groups []Group `yaml:"groups"`
 }
 
 // Group represents a group
 type Group struct {
-	Name     string   `yaml:"name"`
+	Name     string   `yaml:"name" validate:"required"`
 	LBAC     []string `yaml:"enforcedLabels"`
 	Matchers []*labels.Matcher
 }
@@ -62,6 +63,12 @@ func LoadConfig(path string) (*Config, error) {
 
 	var config Config
 	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	err = validate.Struct(config)
 	if err != nil {
 		return nil, err
 	}
