@@ -1,13 +1,13 @@
-destinations:
-  "localhost:9000":
-    type: "loki" # loki|mimir|prometheus|tempo|pyroscope
-    upstream: "http://localhost:3000"
-    allowUndefined: true # allow access to undefined tenants
-    tenants:
-      staging:
-        mode: "allowlist" # denylist
-        groups:
-          - name: "group1"
-            enforcedLabels:
-              - 'sensitive!="true"' # only allow access if sensitive label is not true
-          - name: "group2"
+"localhost:9000":
+  type: "loki" # loki|mimir|prometheus|tempo|pyroscope
+  upstream: "http://localhost:9001"
+  allowUndefined: true # allow access to undefined tenants
+  tenants:
+    shared:
+      mode: "allowlist" # denylist
+      groups:
+        - name: "group3"
+          enforcedLabels:
+            - 'sensitive!="true"' # only allow access if sensitive label is not true
+            - 'source!="kubernetes"' # only allow access if sensitive label is not true
+        # - name: "group2"
