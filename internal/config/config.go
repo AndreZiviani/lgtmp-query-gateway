@@ -1,4 +1,4 @@
-package gateway
+package config
 
 import (
 	"fmt"
@@ -26,8 +26,8 @@ type Mode string
 type StackType string
 
 // Config represents the root YAML structure
-type config struct {
-	Destinations map[string]Destination `yaml:"destinations"`
+type Config struct {
+	Destinations map[string]Destination `yaml:",inline"`
 }
 
 // Destination represents a destination with a map of tenants
@@ -51,7 +51,7 @@ type Group struct {
 	Matchers []*labels.Matcher
 }
 
-func LoadConfig(path string) (*config, error) {
+func LoadConfig(path string) (*Config, error) {
 	// Load the configuration from the specified path
 	// and return a Config struct
 
@@ -60,7 +60,7 @@ func LoadConfig(path string) (*config, error) {
 		return nil, err
 	}
 
-	var config config
+	var config Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err

@@ -75,6 +75,12 @@ func Command() *cli.Command {
 					return nil
 				},
 			},
+			&cli.BoolFlag{
+				Name:    "disable-token-validation",
+				Usage:   "Disable OIDC Token validation",
+				Sources: cli.EnvVars("DISABLE_OIDC_TOKEN_VALIDATION"),
+				Value:   false,
+			},
 		},
 	}
 }

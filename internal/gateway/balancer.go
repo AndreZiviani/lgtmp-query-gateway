@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/url"
 
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -12,7 +13,7 @@ type CustomBalancer struct {
 	targets map[string]*middleware.ProxyTarget
 }
 
-func NewCustomBalancer(destinations map[string]Destination) *CustomBalancer {
+func NewCustomBalancer(destinations map[string]config.Destination) *CustomBalancer {
 	targets := map[string]*middleware.ProxyTarget{}
 	for host, dest := range destinations {
 		if dest.Upstream == "" {
@@ -59,7 +60,7 @@ func (b *CustomBalancer) Next(c echo.Context) *middleware.ProxyTarget {
 }
 
 // CheckTarget is a middleware that checks if the target exists
-func (b *CustomBalancer) CheckTarget(next echo.HandlerFunc) echo.HandlerFunc {
+func (b *CustomBalancer) checkTarget(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		host := c.Request().Host
 		if _, ok := b.targets[host]; !ok {

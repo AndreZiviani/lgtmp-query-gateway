@@ -3,8 +3,8 @@ package gateway
 import (
 	"context"
 	"log"
-	"slices"
 
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/loki"
 	"github.com/labstack/echo/v4"
@@ -17,9 +17,9 @@ const (
 )
 
 type Handler struct {
-	provider  *entra.EntraProvider
-	config    *config
-	upstreams map[string]middleware.ProxyTarget
+	provider        *entra.EntraProvider
+	config          *config.Config
+	tokenValidation bool
 }
 
 type Claims struct {
@@ -39,7 +39,7 @@ func Serve(ctx context.Context, c *cli.Command) error {
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
 
-	config, err := LoadConfig(c.String("config"))
+	config, err := config.LoadConfig(c.String("config"))
 	if err != nil {
 		log.Panic(err)
 	}
@@ -49,20 +49,21 @@ func Serve(ctx context.Context, c *cli.Command) error {
 		ClientID: c.String("client-id"),
 	})
 	if err != nil {
-		log.Panic(err)
+		// log.Panic(err) // TODO
 	}
 
 	handler := &Handler{
-		provider: p,
-		config:   config,
+		provider:        p,
+		config:          config,
+		tokenValidation: !c.Bool("disable-token-validation"),
 	}
 
 	balancer := NewCustomBalancer(config.Destinations)
 
 	e.Use(
-		balancer.CheckTarget,
+		balancer.checkTarget,
 		handler.checkPermissions,
-		handler.enforceLBAC,
+		handler.handle,
 		middleware.ProxyWithConfig(
 			middleware.ProxyConfig{
 				Balancer: balancer,
@@ -80,41 +81,22 @@ func Serve(ctx context.Context, c *cli.Command) error {
 // MUST be called after the checkPermissions middleware
 // This middleware enforces the LBAC rules for the user groups
 // It modifies the query to include the matchers for the groups
-func (h *Handler) enforceLBAC(next echo.HandlerFunc) echo.HandlerFunc {
+func (h *Handler) handle(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		destination := c.Get("destination").(config.Destination)
 
-		tenant := c.Get("tenant").(*Tenant)
-		userGroups := c.Get("groups").([]string)
-		stack := c.Get("stack").(StackType)
-		// email := c.Get("email").(string)
-
-		if tenant == nil || userGroups == nil || len(userGroups) == 0 {
-			// if we get here, it means that something went terribly wrong
-			return echo.ErrInternalServerError
-		}
-
-		switch stack {
-		case StackLoki:
-			e, err := loki.ParseQuery(c.Request().URL.Query().Get("query"))
+		switch destination.Type {
+		case config.StackLoki:
+			err := loki.Handle(c)
 			if err != nil {
-				return echo.ErrBadRequest
+				return err
 			}
 
-			for _, group := range tenant.Groups {
-				if !slices.Contains(userGroups, group.Name) {
-					continue
-				}
-				loki.EnforceLBAC(e, group.Matchers)
-			}
-
-			// patch the query with the new one
-			c.Request().URL.Query().Set("query", e.String())
-
-		case StackMimir, StackPrometheus:
+		case config.StackMimir, config.StackPrometheus:
 			return echo.ErrNotImplemented
-		case StackTempo:
+		case config.StackTempo:
 			return echo.ErrNotImplemented
-		case StackPyroscope:
+		case config.StackPyroscope:
 			return echo.ErrNotImplemented
 		default:
 			return echo.ErrUnprocessableEntity
