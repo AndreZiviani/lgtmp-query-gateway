@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
@@ -80,6 +81,12 @@ func Command() *cli.Command {
 				Usage:   "Disable OIDC Token validation",
 				Sources: cli.EnvVars("DISABLE_OIDC_TOKEN_VALIDATION"),
 				Value:   false,
+			},
+			&cli.DurationFlag{
+				Name:    "drain-duration",
+				Usage:   "Duration to wait before shutting down the server",
+				Sources: cli.EnvVars("DRAIN_DURATION"),
+				Value:   30 * time.Second,
 			},
 		},
 	}

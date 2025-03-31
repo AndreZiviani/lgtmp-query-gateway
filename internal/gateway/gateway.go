@@ -3,14 +3,21 @@ package gateway
 import (
 	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/otel"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/loki"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/mimir"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/urfave/cli/v3"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 const (
@@ -35,10 +42,18 @@ type Claims struct {
 }
 
 func Serve(ctx context.Context, c *cli.Command) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	defer stop()
+
+	wg := &sync.WaitGroup{}
+
+	otel.Initialize(ctx, wg)
+
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	e.Use(otelecho.Middleware("echo"))
 
 	config, err := config.LoadConfig(c.String("config"))
 	if err != nil {
@@ -76,10 +91,21 @@ func Serve(ctx context.Context, c *cli.Command) error {
 		),
 	)
 
-	e.Logger.Fatal(
-		e.Start(":" + c.String("port")),
-	)
+	go func() {
+		if err := e.Start(":" + c.String("port")); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("shutting down server: %v", err)
+		}
+	}()
 
+	<-ctx.Done()
+	log.Println("shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), c.Duration("drain-duration"))
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		log.Fatalf("shutting down server: %v", err)
+	}
+	wg.Wait()
+	log.Println("server shut down gracefully")
 	return nil
 }
 
