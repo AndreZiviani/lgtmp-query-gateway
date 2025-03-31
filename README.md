@@ -19,7 +19,7 @@
 ## Supported Stacks
 
 1. **Loki**
-2. **Mimir** (Planned)
+2. **Mimir**
 3. **Tempo** (Planned)
 4. **Pyroscope** (Planned)
 

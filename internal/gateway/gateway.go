@@ -7,6 +7,7 @@ import (
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/loki"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/mimir"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/urfave/cli/v3"
@@ -97,7 +98,11 @@ func (h *Handler) handle(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 
 		case config.StackMimir, config.StackPrometheus:
-			return echo.ErrNotImplemented
+			err := mimir.Handle(c)
+			if err != nil {
+				return err
+			}
+
 		case config.StackTempo:
 			return echo.ErrNotImplemented
 		case config.StackPyroscope:
