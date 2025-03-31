@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"fmt"
 	"log"
 	"slices"
 	"strings"
@@ -154,17 +153,7 @@ func EnforceLBAC(e syntax.Expr, lbac []*labels.Matcher) error {
 	// must check if any labels are already set in the expression
 	// if so, we must rewrite them instead of adding them
 
-	var selector syntax.LogSelectorExpr
-	switch e := e.(type) {
-	case *syntax.RangeAggregationExpr:
-		// this is a metrics query
-		selector, _ = e.Selector()
-	case syntax.LogSelectorExpr:
-		// this is a log query
-		selector = e
-	default:
-		return fmt.Errorf("unsuported expression type: %T", e)
-	}
+	selector := getSelector(e)
 
 OUTER:
 	for _, l := range lbac {
@@ -190,4 +179,19 @@ func appendMatcher(selector syntax.LogSelectorExpr, matcher *labels.Matcher) {
 		},
 	}
 	selector.Accept(visitor)
+}
+
+// getSelector returns the selector from the expression
+// an expression can have multiple levels of nesting
+func getSelector(e syntax.Expr) syntax.LogSelectorExpr {
+	var selector syntax.LogSelectorExpr
+
+	visitor := &syntax.DepthFirstTraversal{
+		VisitMatchersFn: func(_ syntax.RootVisitor, m *syntax.MatchersExpr) {
+			selector = m
+		},
+	}
+	e.Accept(visitor)
+
+	return selector
 }
