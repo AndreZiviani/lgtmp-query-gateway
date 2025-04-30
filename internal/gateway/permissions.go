@@ -38,6 +38,11 @@ func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 
 		var claims *Claims
 		if h.tokenValidation {
+			token := c.Request().Header.Get("x-id-token")
+			if token == "" {
+				return echo.ErrUnauthorized
+			}
+
 			// If token validation is enabled, we need to validate the token
 			claims, err = h.validateToken(c.Request().Context(), c.Request().Header.Get("x-id-token"))
 			if err != nil {
