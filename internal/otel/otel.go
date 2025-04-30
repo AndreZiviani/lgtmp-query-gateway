@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +20,8 @@ var (
 )
 
 func Initialize(ctx context.Context, wg *sync.WaitGroup) {
-	if os.Getenv("OTEL_ENABLED") == "" {
+	enabled := os.Getenv("OTEL_ENABLED")
+	if strings.ToLower(enabled) != "true" {
 		return
 	}
 
