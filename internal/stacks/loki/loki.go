@@ -24,11 +24,6 @@ const (
 	RouteTailStream        = "/loki/api/v1/tail" // WebSocket
 )
 
-type Label struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
 func Handle(c echo.Context) error {
 	path := c.Request().URL.Path
 
@@ -37,17 +32,25 @@ func Handle(c echo.Context) error {
 		return nil
 	}
 
-	switch path {
-	case RouteInstantQuery, RouteRangeQuery, RouteLabels,
-		RouteIndexStats, RouteInstantLogVolume, RouteRangeLogVolume, RoutePattern:
+	var query, field string
 
-		err := PatchQuery(c, "query")
-		if err != nil {
-			log.Println(err)
-			return err
-		}
+	switch path {
+	case RouteLabels:
+		// "query" parameter is optional, but if it is specified it must match something
+		// queries require at least one regexp or equality matcher that does not have an
+		// empty-compatible value. For instance, app=~".*" does not meet this requirement,
+		// but app=~".+" will, which means that we can't just inject filters removing some
+		// labels (e.g. app!="api").
+		//
+		// Allow user to view all labels, we will enforce LBAC on the matchers when querying the log
 
 		return nil
+
+	case RouteInstantQuery, RouteRangeQuery,
+		RouteIndexStats, RouteInstantLogVolume, RouteRangeLogVolume, RoutePattern:
+
+		field = "query"
+		query = c.Request().URL.Query().Get(field)
 
 	case RouteSeries:
 		// This can be either a GET or POST request
@@ -60,13 +63,8 @@ func Handle(c echo.Context) error {
 			return echo.ErrNotImplemented
 		}
 
-		err := PatchQuery(c, "match")
-		if err != nil {
-			log.Println(err)
-			return err
-		}
-
-		return nil
+		field = "match"
+		query = c.Request().URL.Query().Get(field)
 
 	case RouteTailStream:
 		// Also receives a query parameter "query", but this is a WebSocket
@@ -76,6 +74,23 @@ func Handle(c echo.Context) error {
 	default:
 		return echo.ErrBadRequest
 	}
+
+	expr, err := ParseQuery(query)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	err = PatchExpression(c, expr)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// Patch the query with the new one
+	PatchRequest(c, field, expr)
+
+	return nil
 }
 
 func ParseQuery(query string) (syntax.Expr, error) {
@@ -83,14 +98,7 @@ func ParseQuery(query string) (syntax.Expr, error) {
 	return syntax.ParseExpr(query)
 }
 
-func PatchQuery(c echo.Context, parameterName string) error {
-	// Parse the query
-	expr, err := ParseQuery(c.Request().URL.Query().Get(parameterName))
-	if err != nil {
-		log.Println(err)
-		return echo.NewHTTPError(400, "invalid query")
-	}
-
+func PatchExpression(c echo.Context, expr syntax.Expr) error {
 	// Get the tenant from the request
 	destination := c.Get("destination").(config.Destination)
 	tenantNames := c.Get("tenantNames").([]string)
@@ -135,21 +143,25 @@ func PatchQuery(c echo.Context, parameterName string) error {
 		}
 	}
 
-	err = EnforceLBAC(expr, enforcedLabels)
+	err := EnforceLBAC(expr, enforcedLabels)
 	if err != nil {
 		log.Printf("failed to enforce LBAC: %v", err)
 		return echo.NewHTTPError(400, "invalid query: %v", err)
 	}
 
-	// patch the query with the new one
-	patchedQuery := c.Request().URL.Query() // this returns a copy and not a reference
-	patchedQuery.Set(parameterName, expr.String())
-	c.Request().URL.RawQuery = patchedQuery.Encode()
-
 	return nil
 }
 
 func EnforceLBAC(e syntax.Expr, lbac []*labels.Matcher) error {
+	if len(lbac) == 0 {
+		// no labels to enforce
+		return nil
+	}
+
+	if e == nil {
+		return echo.ErrBadRequest
+	}
+
 	// must check if any labels are already set in the expression
 	// if so, we must rewrite them instead of adding them
 
@@ -166,8 +178,6 @@ OUTER:
 		}
 		appendMatcher(selector, l)
 	}
-
-	log.Println(e.String())
 
 	return nil
 }
@@ -194,4 +204,11 @@ func getSelector(e syntax.Expr) syntax.LogSelectorExpr {
 	e.Accept(visitor)
 
 	return selector
+}
+
+func PatchRequest(c echo.Context, parameterName string, expr syntax.Expr) {
+	// patch the query with the new one
+	patchedQuery := c.Request().URL.Query() // this returns a copy and not a reference
+	patchedQuery.Set(parameterName, expr.String())
+	c.Request().URL.RawQuery = patchedQuery.Encode()
 }
