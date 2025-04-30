@@ -34,6 +34,7 @@ type Config struct {
 // Destination represents a destination with a map of tenants
 type Destination struct {
 	Type           StackType         `yaml:"type" validate:"required"`
+	Hostname       string            `yaml:"hostname"`
 	Upstream       string            `yaml:"upstream" validate:"required"`
 	AllowUndefined bool              `yaml:"allowUndefined"`
 	Tenants        map[string]Tenant `yaml:"tenants"`
@@ -74,6 +75,33 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
+	// create an alias to avoid infinite recursion
+	type Alias Config
+	var aux Alias
+
+	if err := unmarshal(&aux); err != nil {
+		return err
+	}
+
+	c.Destinations = make(map[string]Destination)
+
+	for name, dest := range aux.Destinations {
+		hostname := dest.Hostname
+		if hostname == "" {
+			hostname = name
+		}
+
+		if _, ok := c.Destinations[hostname]; ok {
+			return fmt.Errorf("duplicate destination hostname: %s", hostname)
+		}
+
+		c.Destinations[hostname] = dest
+	}
+
+	return nil
 }
 
 func (g *Group) UnmarshalYAML(unmarshal func(any) error) error {
