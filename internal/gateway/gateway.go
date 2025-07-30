@@ -11,6 +11,7 @@ import (
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/otel"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/loki"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/mimir"
@@ -25,7 +26,7 @@ const (
 )
 
 type Handler struct {
-	provider        *entra.EntraProvider
+	provider        providers.Provider
 	config          *config.Config
 	tokenValidation bool
 }
@@ -61,12 +62,18 @@ func Serve(ctx context.Context, c *cli.Command) error {
 	}
 
 	tokenValidation := !c.Bool("disable-token-validation")
-	var provider *entra.EntraProvider
+	var provider providers.Provider
 	if tokenValidation {
-		provider, err = entra.New(&entra.AzureSettings{
-			TenantID: c.String("tenant-id"),
-			ClientID: c.String("client-id"),
-		})
+		switch c.String("provider") {
+		case entra.ProviderName:
+			provider, err = entra.New(&entra.AzureSettings{
+				TenantID: c.String("tenant-id"),
+				ClientID: c.String("client-id"),
+			})
+		default:
+			log.Panicf("Unsupported provider: %s", c.String("provider"))
+		}
+
 		if err != nil {
 			log.Panic(err)
 		}
