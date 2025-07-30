@@ -28,29 +28,36 @@ type StackType string
 
 // Config represents the root YAML structure
 type Config struct {
+	Server       Server                 `yaml:"server"`
+	Profiles     map[string]Profile     `yaml:"profiles"`
 	Destinations map[string]Destination `yaml:",inline"`
+}
+
+// Server represents the server configuration
+type Server struct {
+	Port int `yaml:"port" validate:"required"`
+}
+
+// Profiles represents the profiles configuration
+type Profile struct {
+	Groups         []string `yaml:"groups" validate:"required"`
+	EnforcedLabels []string `yaml:"enforcedLabels"`
+	Matchers       []*labels.Matcher
 }
 
 // Destination represents a destination with a map of tenants
 type Destination struct {
 	Type           StackType         `yaml:"type" validate:"required"`
-	Hostname       string            `yaml:"hostname"`
 	Upstream       string            `yaml:"upstream" validate:"required"`
 	AllowUndefined bool              `yaml:"allowUndefined"`
+	Admins         []string          `yaml:"admins"`
 	Tenants        map[string]Tenant `yaml:"tenants"`
 }
 
 // Tenant represents a tenant with a mode and a list of groups
 type Tenant struct {
-	Mode   Mode    `yaml:"mode" validate:"required,oneof=allowlist denylist"`
-	Groups []Group `yaml:"groups"`
-}
-
-// Group represents a group
-type Group struct {
-	Name     string   `yaml:"name" validate:"required"`
-	LBAC     []string `yaml:"enforcedLabels"`
-	Matchers []*labels.Matcher
+	Mode     Mode     `yaml:"mode" validate:"required,oneof=allowlist denylist"`
+	Profiles []string `yaml:"profiles"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -89,36 +96,31 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	c.Destinations = make(map[string]Destination)
 
 	for name, dest := range aux.Destinations {
-		hostname := dest.Hostname
-		if hostname == "" {
-			hostname = name
+		if _, ok := c.Destinations[name]; ok {
+			return fmt.Errorf("duplicate destination hostname: %s", name)
 		}
 
-		if _, ok := c.Destinations[hostname]; ok {
-			return fmt.Errorf("duplicate destination hostname: %s", hostname)
-		}
-
-		c.Destinations[hostname] = dest
+		c.Destinations[name] = dest
 	}
 
 	return nil
 }
 
-func (g *Group) UnmarshalYAML(unmarshal func(any) error) error {
+func (p *Profile) UnmarshalYAML(unmarshal func(any) error) error {
 	// create an alias to avoid infinite recursion
-	type Alias Group
+	type Alias Profile
 	var aux Alias
 
 	if err := unmarshal(&aux); err != nil {
 		return err
 	}
 
-	//TODO: find a way to copy values from aux to g automatically
-	g.LBAC = aux.LBAC
-	g.Name = aux.Name
-	g.Matchers = make([]*labels.Matcher, 0, len(aux.LBAC))
+	//TODO: find a way to copy values from aux to p automatically
+	p.Groups = aux.Groups
+	p.EnforcedLabels = aux.EnforcedLabels
+	p.Matchers = make([]*labels.Matcher, 0, len(aux.EnforcedLabels))
 
-	for _, matcher := range aux.LBAC {
+	for _, matcher := range aux.EnforcedLabels {
 		str := matcher
 		if !strings.HasPrefix(str, "{") {
 			str = "{" + str + "}"
@@ -128,7 +130,7 @@ func (g *Group) UnmarshalYAML(unmarshal func(any) error) error {
 			log.Printf("failed to parse matcher %s: %v", matcher, err)
 			return fmt.Errorf("failed to parse matcher %s: %w", matcher, err)
 		}
-		g.Matchers = append(g.Matchers, m...)
+		p.Matchers = append(p.Matchers, m...)
 	}
 	return nil
 }

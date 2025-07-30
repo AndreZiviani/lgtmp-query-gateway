@@ -2,40 +2,33 @@ package loki
 
 import (
 	"log"
-	"slices"
-	"strings"
+	"regexp"
 
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
 const (
-	RouteInstantQuery      = "/loki/api/v1/query"
-	RouteRangeQuery        = "/loki/api/v1/query_range"
-	RouteLabels            = "/loki/api/v1/labels"
-	RouteLabelValuesPrefix = "/loki/api/v1/label/"
-	RouteSeries            = "/loki/api/v1/series"
-	RouteIndexStats        = "/loki/api/v1/index/stats"
-	RouteInstantLogVolume  = "/loki/api/v1/index/volume"
-	RouteRangeLogVolume    = "/loki/api/v1/index/volume_range"
-	RoutePattern           = "/loki/api/v1/patterns"
-	RouteTailStream        = "/loki/api/v1/tail" // WebSocket
+	RouteInstantQuery     = "/loki/api/v1/query"
+	RouteRangeQuery       = "/loki/api/v1/query_range"
+	RouteLabels           = "/loki/api/v1/labels"
+	RouteSeries           = "/loki/api/v1/series"
+	RouteIndexStats       = "/loki/api/v1/index/stats"
+	RouteInstantLogVolume = "/loki/api/v1/index/volume"
+	RouteRangeLogVolume   = "/loki/api/v1/index/volume_range"
+	RoutePattern          = "/loki/api/v1/patterns"
+	RouteTailStream       = "/loki/api/v1/tail" // WebSocket
+)
+
+var (
+	RouteLabelValuesPrefix = regexp.MustCompile("/loki/api/v1/label/.+")
 )
 
 func Handle(c echo.Context) error {
 	path := c.Request().URL.Path
 
-	if strings.HasPrefix(path, RouteLabelValuesPrefix) {
-		// We cant enforce LBAC here
-		return nil
-	}
-
-	var query, field string
-
-	switch path {
-	case RouteLabels:
+	if path == RouteLabels || RouteLabelValuesPrefix.MatchString(path) {
 		// "query" parameter is optional, but if it is specified it must match something
 		// queries require at least one regexp or equality matcher that does not have an
 		// empty-compatible value. For instance, app=~".*" does not meet this requirement,
@@ -45,7 +38,11 @@ func Handle(c echo.Context) error {
 		// Allow user to view all labels, we will enforce LBAC on the matchers when querying the log
 
 		return nil
+	}
 
+	var query, field string
+
+	switch path {
 	case RouteInstantQuery, RouteRangeQuery,
 		RouteIndexStats, RouteInstantLogVolume, RouteRangeLogVolume, RoutePattern:
 
@@ -100,48 +97,7 @@ func ParseQuery(query string) (syntax.Expr, error) {
 
 func PatchExpression(c echo.Context, expr syntax.Expr) error {
 	// Get the tenant from the request
-	destination := c.Get("destination").(config.Destination)
-	tenantNames := c.Get("tenantNames").([]string)
-
-	// We dont support multi tenant requests for now
-	tenant, ok := destination.Tenants[tenantNames[0]]
-	if !ok {
-		if destination.AllowUndefined {
-			// Allow access if the tenant is not defined
-			return nil
-		}
-		return echo.ErrBadRequest
-	}
-
-	userGroups := c.Get("groups").([]string)
-
-	found := false
-	enforcedLabels := make([]*labels.Matcher, 0)
-	// A user can be part of multiple groups, so we need to check all of them
-	// and see if any of them match any of the groups in the tenant
-	for _, group := range tenant.Groups {
-		if !slices.Contains(userGroups, group.Name) {
-			continue
-		}
-		if len(group.Matchers) > 0 {
-			// if we get here, it means that the user is part of a group
-			// that has LBAC rules
-			enforcedLabels = append(enforcedLabels, group.Matchers...)
-		}
-		found = true
-	}
-
-	if tenant.Mode == config.ModeAllowList {
-		// This tenant requires that the user is part of at least one of the groups
-		if !found {
-			return echo.ErrForbidden
-		}
-	} else {
-		// This tenant requires that the user is not part of any of the groups
-		if found {
-			return echo.ErrForbidden
-		}
-	}
+	enforcedLabels := c.Get("enforcedLabels").([]*labels.Matcher)
 
 	err := EnforceLBAC(expr, enforcedLabels)
 	if err != nil {

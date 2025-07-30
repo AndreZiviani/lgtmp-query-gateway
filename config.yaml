@@ -1,14 +1,22 @@
-"0.0.0.0:9009": &loki
+server:
+  port: 9000
+
+profiles:
+  nonsensitive:
+    matchGroups:
+      - "groupA"
+    enforceLabels:
+      - 'sensitive!="true"' # only allow access if sensitive label is not true
+
+
+"loki.localhost": &loki
   type: "loki" # loki|mimir|prometheus|tempo|pyroscope
-  hostname: "172.20.0.1:9009"
   upstream: "http://localhost:9000"
   allowUndefined: false # allow access to undefined tenants
+  admins:
+    - "groupB" # allow access to all tenants
   tenants:
     shared:
       mode: "allowlist" # denylist
-      groups:
-        - name: "group3"
-          enforcedLabels:
-            - 'sensitive!="true"' # only allow access if sensitive label is not true
-            - 'source!="kubernetes"' # only allow access if sensitive label is not true
-        # - name: "group2"
+      profiles:
+        - nonsensitive

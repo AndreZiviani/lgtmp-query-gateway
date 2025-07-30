@@ -2,10 +2,8 @@ package mimir
 
 import (
 	"log"
-	"slices"
 	"strings"
 
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -114,49 +112,7 @@ func PatchQuery(c echo.Context, parameterName string) error {
 		return echo.NewHTTPError(400, "invalid query")
 	}
 
-	// Get the tenant from the request
-	destination := c.Get("destination").(config.Destination)
-	tenantNames := c.Get("tenantNames").([]string)
-
-	// We dont support multi tenant requests for now
-	tenant, ok := destination.Tenants[tenantNames[0]]
-	if !ok {
-		if destination.AllowUndefined {
-			// Allow access if the tenant is not defined
-			return nil
-		}
-		return echo.ErrBadRequest
-	}
-
-	userGroups := c.Get("groups").([]string)
-
-	found := false
-	enforcedLabels := make([]*labels.Matcher, 0)
-	// A user can be part of multiple groups, so we need to check all of them
-	// and see if any of them match any of the groups in the tenant
-	for _, group := range tenant.Groups {
-		if !slices.Contains(userGroups, group.Name) {
-			continue
-		}
-		if len(group.Matchers) > 0 {
-			// if we get here, it means that the user is part of a group
-			// that has LBAC rules
-			enforcedLabels = append(enforcedLabels, group.Matchers...)
-		}
-		found = true
-	}
-
-	if tenant.Mode == config.ModeAllowList {
-		// This tenant requires that the user is part of at least one of the groups
-		if !found {
-			return echo.ErrForbidden
-		}
-	} else {
-		// This tenant requires that the user is not part of any of the groups
-		if found {
-			return echo.ErrForbidden
-		}
-	}
+	enforcedLabels := c.Get("enforcedLabels").([]*labels.Matcher)
 
 	err = EnforceLBAC(expr, enforcedLabels)
 	if err != nil {

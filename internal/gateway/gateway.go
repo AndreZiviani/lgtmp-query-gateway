@@ -82,6 +82,7 @@ func Serve(ctx context.Context, c *cli.Command) error {
 
 	e.Use(
 		balancer.checkTarget,
+		handler.validateRequest,
 		handler.checkPermissions,
 		handler.handle,
 		middleware.ProxyWithConfig(

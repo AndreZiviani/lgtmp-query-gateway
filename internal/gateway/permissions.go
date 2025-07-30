@@ -3,38 +3,20 @@ package gateway
 import (
 	"context"
 	"log"
-	"slices"
-	"strings"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/util"
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		destination, err := h.getDestination(c)
-		if err != nil {
-			log.Print(err)
-			return err
-		}
+		var err error
 
-		tenantID := c.Request().Header.Get(TenantIDHeader)
-
-		if tenantID == "" {
-			return echo.ErrBadRequest
-		}
-
-		queryTenants := []string{tenantID}
-
-		if strings.Contains(tenantID, "|") {
-			// If the tenantID contains a pipe, this is a multi-tenant request
-			// and we need to split it into multiple tenants
-			// X-Scope-OrgID:Tenant1|Tenant2|Tenant3
-			//
-			// We dont support this for now...
-			return echo.NewHTTPError(echo.ErrNotImplemented.Code, "multi-tenant requests are not supported yet")
-			// queryTenants = strings.Split(tenantID, "|")
-		}
+		// All validations are done in the previous middleware
+		destination := c.Get("destination").(config.Destination)
+		tenantNames := c.Get("tenantNames").([]string)
 
 		var claims *Claims
 		if h.tokenValidation {
@@ -60,9 +42,16 @@ func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 		}
 
-		for _, tenantID := range queryTenants {
+		enforcedLabels := make([]*labels.Matcher, 0)
+		for _, tenantID := range tenantNames {
 			if tenant, ok := destination.Tenants[tenantID]; ok {
-				found := slicesContains(tenant.Groups, claims.Groups)
+				found := false
+				for _, profile := range tenant.Profiles {
+					if util.SlicesContains(claims.Groups, h.config.Profiles[profile].Groups) {
+						enforcedLabels = append(enforcedLabels, h.config.Profiles[profile].Matchers...)
+						found = true
+					}
+				}
 
 				if (tenant.Mode == "allowlist" && !found) || (tenant.Mode == "denylist" && found) {
 					return echo.ErrForbidden
@@ -73,10 +62,9 @@ func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 		}
 
-		c.Set("tenantNames", queryTenants)
 		c.Set("groups", claims.Groups)
 		c.Set("email", claims.Email)
-		c.Set("destination", destination)
+		c.Set("enforcedLabels", enforcedLabels)
 
 		return next(c)
 	}
@@ -94,16 +82,6 @@ func (h *Handler) validateToken(ctx context.Context, token string) (*Claims, err
 	}
 
 	return claims, nil
-}
-
-func slicesContains(groups []config.Group, claims []string) bool {
-	for _, group := range groups {
-		if slices.Contains(claims, group.Name) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (h *Handler) getDestination(c echo.Context) (config.Destination, error) {
