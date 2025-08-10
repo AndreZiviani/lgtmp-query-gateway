@@ -83,17 +83,3 @@ func (h *Handler) validateToken(ctx context.Context, token string) (*Claims, err
 
 	return claims, nil
 }
-
-func (h *Handler) getDestination(c echo.Context) (config.Destination, error) {
-	host := c.Request().Host
-	tenantID := c.Request().Header.Get(TenantIDHeader)
-
-	if host == "" || tenantID == "" {
-		return config.Destination{}, echo.ErrBadRequest
-	}
-
-	// Previous middleware validates that the target exists
-	destination := h.config.Destinations[host]
-
-	return destination, nil
-}
