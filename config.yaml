@@ -9,14 +9,15 @@ profiles:
       - 'sensitive!="true"' # only allow access if sensitive label is not true
 
 
-"loki.localhost": &loki
-  type: "loki" # loki|mimir|prometheus|tempo|pyroscope
-  upstream: "http://localhost:9000"
-  allowUndefined: false # allow access to undefined tenants
-  admins:
-    - "groupB" # allow access to all tenants
-  tenants:
-    shared:
-      mode: "allowlist" # denylist
-      profiles:
-        - nonsensitive
+destinations:
+  "host.orb.internal:9000": &loki
+    type: "loki" # loki|mimir|prometheus|tempo|pyroscope
+    upstream: "http://localhost:9000"
+    allowUndefined: false # allow access to undefined tenants
+    admins:
+      - "groupB" # allow access to all tenants
+    tenants:
+      shared:
+        mode: "allowlist" # denylist
+        profiles:
+          - nonsensitive

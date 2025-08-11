@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/entra"
 	"github.com/coreos/go-oidc"
 )
 

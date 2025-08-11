@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 	"time"
 
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers"
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/entra"
 	"github.com/urfave/cli/v3"
 )
 
@@ -59,22 +58,6 @@ func Command() *cli.Command {
 				Aliases: []string{"f"},
 				Sources: cli.EnvVars("CONFIG"),
 				Value:   "config.yaml",
-			},
-			&cli.StringFlag{
-				Name:    "port",
-				Usage:   "Port to listen on",
-				Sources: cli.EnvVars("PORT"),
-				Value:   "9000",
-				Action: func(ctx context.Context, c *cli.Command, v string) error {
-					n, err := strconv.Atoi(v)
-					if err != nil {
-						return err
-					}
-					if n < 1 || n > 65535 {
-						return cli.Exit("Invalid port", 1)
-					}
-					return nil
-				},
 			},
 			&cli.BoolFlag{
 				Name:    "disable-token-validation",

@@ -2,9 +2,12 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/mock"
+	oidcTypes "github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/types"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/util"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,28 +21,11 @@ func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 		destination := c.Get("destination").(config.Destination)
 		tenantNames := c.Get("tenantNames").([]string)
 
-		var claims *Claims
-		if h.tokenValidation {
-			token := c.Request().Header.Get("x-id-token")
-			if token == "" {
-				return echo.ErrUnauthorized
-			}
-
-			// If token validation is enabled, we need to validate the token
-			claims, err = h.validateToken(c.Request().Context(), c.Request().Header.Get("x-id-token"))
-			if err != nil {
-				log.Print(err)
-				return echo.ErrUnauthorized
-			}
-		} else {
-			log.Printf("Token validation is disabled, using mock claims for testing purposes")
-			// Mock the claims for testing purposes
-			claims = &Claims{
-				Groups: []string{"group1", "group2"},
-				Email:  "user@example.com",
-				Name:   "User",
-				Roles:  []string{"role1", "role2"},
-			}
+		// If token validation is enabled, we need to validate the token
+		claims, err := h.validateToken(c.Request().Context(), c.Request().Header.Get("x-id-token"))
+		if err != nil {
+			log.Print(err)
+			return echo.ErrUnauthorized
 		}
 
 		enforcedLabels := make([]*labels.Matcher, 0)
@@ -70,13 +56,36 @@ func (h *Handler) checkPermissions(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func (h *Handler) validateToken(ctx context.Context, token string) (*Claims, error) {
+func (h *Handler) validateToken(ctx context.Context, token string) (*oidcTypes.Claims, error) {
+	if !h.tokenValidation {
+		log.Printf("Token validation is disabled, using mock claims for testing purposes")
+		// Mock the claims for testing purposes
+		return &oidcTypes.Claims{
+			Groups: []string{"group1", "group2"},
+			Email:  "user@example.com",
+			Name:   "User",
+			Roles:  []string{"role1", "role2"},
+		}, nil
+	}
+
+	// If we are using a mock provider, treat the token as Claims instead of OIDC
+	// because it is hard to mock it
+	if _, ok := h.provider.(*mock.Provider); ok {
+		log.Printf("Using mock provider for testing purposes")
+		c := oidcTypes.Claims{}
+		err := json.Unmarshal([]byte(token), &c)
+		if err != nil {
+			return nil, err
+		}
+		return &c, nil
+	}
+
 	idToken, err := h.provider.Validate(ctx, token)
 	if err != nil {
 		return nil, err
 	}
 
-	claims := &Claims{}
+	claims := &oidcTypes.Claims{}
 	if err := idToken.Claims(claims); err != nil {
 		return nil, err
 	}

@@ -30,7 +30,7 @@ type StackType string
 type Config struct {
 	Server       Server                 `yaml:"server"`
 	Profiles     map[string]Profile     `yaml:"profiles"`
-	Destinations map[string]Destination `yaml:",inline"`
+	Destinations map[string]Destination `yaml:"destinations"`
 }
 
 // Server represents the server configuration
@@ -102,6 +102,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 
 		c.Destinations[name] = dest
 	}
+
+	c.Profiles = aux.Profiles
+	c.Server = aux.Server
 
 	return nil
 }

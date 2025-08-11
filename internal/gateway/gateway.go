@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,8 +12,9 @@ import (
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/otel"
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers"
-	"github.com/AndreZiviani/lgtmp-query-gateway/internal/providers/entra"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/entra"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/mock"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/loki"
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/stacks/mimir"
 	"github.com/labstack/echo/v4"
@@ -29,17 +31,6 @@ type Handler struct {
 	provider        providers.Provider
 	config          *config.Config
 	tokenValidation bool
-}
-
-type Claims struct {
-	Groups    []string `json:"groups"`
-	Email     string   `json:"email"`
-	Name      string   `json:"name"`
-	Roles     []string `json:"roles"`
-	IssuedAt  int64    `json:"iat"`
-	ExpiresAt int64    `json:"exp"`
-	NotBefore int64    `json:"nbf"`
-	Issuer    string   `json:"iss"`
 }
 
 func Serve(ctx context.Context, c *cli.Command) error {
@@ -75,8 +66,11 @@ func Serve(ctx context.Context, c *cli.Command) error {
 		}
 
 		if err != nil {
-			log.Panic(err)
+			// log.Panic(err)
 		}
+	} else {
+		// Mock provider for testing purposes
+		provider = &mock.Provider{}
 	}
 
 	handler := &Handler{
@@ -100,7 +94,7 @@ func Serve(ctx context.Context, c *cli.Command) error {
 	)
 
 	go func() {
-		if err := e.Start(":" + c.String("port")); err != nil && err != http.ErrServerClosed {
+		if err := e.Start(fmt.Sprintf(":%d", config.Server.Port)); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("shutting down server: %v", err)
 		}
 	}()

@@ -10,7 +10,10 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}/cmd/gateway",
-      "args": ["serve"],
+      "args": [
+        "serve",
+        "-f", "${workspaceFolder}/config.yaml",
+      ],
       "env": {},
       "envFile": "${workspaceFolder}/.env",
       "showLog": false

@@ -1,31 +1,18 @@
 package gateway
 
 import (
-	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/AndreZiviani/lgtmp-query-gateway/internal/config"
+	"github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/providers/mock"
+	oidcTypes "github.com/AndreZiviani/lgtmp-query-gateway/internal/oidc/types"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
-
-// Create a mock handler that embeds the original Handler
-type MockHandler struct {
-	*Handler
-	mock.Mock
-}
-
-func (m *MockHandler) validateToken(ctx context.Context, token string) (*Claims, error) {
-	args := m.Called(ctx, token)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*Claims), args.Error(1)
-}
 
 func TestCheckPermissions(t *testing.T) {
 	tests := []struct {
@@ -34,7 +21,7 @@ func TestCheckPermissions(t *testing.T) {
 		destination            config.Destination
 		profiles               map[string]config.Profile
 		tenantNames            []string
-		mockClaims             *Claims
+		mockClaims             *oidcTypes.Claims
 		mockValidateTokenError error
 		expectedGroups         []string
 		expectedEmail          string
@@ -57,7 +44,7 @@ func TestCheckPermissions(t *testing.T) {
 				},
 			},
 			tenantNames: []string{"tenant1"},
-			mockClaims: &Claims{
+			mockClaims: &oidcTypes.Claims{
 				Groups: []string{"group1"},
 				Email:  "user@example.com",
 			},
@@ -80,7 +67,7 @@ func TestCheckPermissions(t *testing.T) {
 				},
 			},
 			tenantNames: []string{"tenant1"},
-			mockClaims: &Claims{
+			mockClaims: &oidcTypes.Claims{
 				Groups: []string{"group2"},
 				Email:  "user@example.com",
 			},
@@ -103,7 +90,7 @@ func TestCheckPermissions(t *testing.T) {
 				},
 			},
 			tenantNames: []string{"tenant1"},
-			mockClaims: &Claims{
+			mockClaims: &oidcTypes.Claims{
 				Groups: []string{"group2"},
 				Email:  "user@example.com",
 			},
@@ -114,9 +101,12 @@ func TestCheckPermissions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			token, err := json.Marshal(tt.mockClaims)
+			assert.NoError(t, err)
+
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.Header.Set("x-id-token", "valid-token")
+			req.Header.Set("x-id-token", string(token))
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
@@ -124,7 +114,7 @@ func TestCheckPermissions(t *testing.T) {
 			c.Set("tenantNames", tt.tenantNames)
 
 			// Create the real handler
-			realHandler := &Handler{
+			h := &Handler{
 				config: &config.Config{
 					Destinations: map[string]config.Destination{
 						tt.host: tt.destination,
@@ -132,15 +122,10 @@ func TestCheckPermissions(t *testing.T) {
 					Profiles: tt.profiles,
 				},
 				tokenValidation: true,
+				provider:        &mock.Provider{},
 			}
 
-			// Create mock handler that embeds the real handler
-			mockHandler := &MockHandler{Handler: realHandler}
-
-			// Set up mock expectations
-			mockHandler.On("validateToken", mock.Anything, mock.Anything).Return(tt.mockClaims, tt.mockValidateTokenError)
-
-			err := mockHandler.checkPermissions(func(c echo.Context) error {
+			err = h.checkPermissions(func(c echo.Context) error {
 				return nil
 			})(c)
 
@@ -149,7 +134,6 @@ func TestCheckPermissions(t *testing.T) {
 				assert.IsType(t, tt.expectedError, err)
 			} else {
 				assert.NoError(t, err)
-				mockHandler.AssertExpectations(t)
 			}
 		})
 	}
